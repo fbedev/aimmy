@@ -2,11 +2,30 @@
 
 Aimmy natively ported to Mac. Contains AI-based targeting components and features natively optimized for macOS.
 
-## Setup
+## Quick Install (One Command)
 
-1. Make sure you have the .NET 8.0 SDK installed.
-2. Build the project using `dotnet build`.
-3. Run with `dotnet run`.
+```bash
+git clone https://github.com/fbedev/aimmy.git && cd aimmy/Aimmy.Mac && bash install.sh
+```
+
+This will automatically install everything you need (.NET 8, ffmpeg, packages) and build the app.
+
+## Run
+
+```bash
+cd aimmy/Aimmy.Mac && dotnet run
+```
+
+## Permissions (Required)
+
+You **must** grant these permissions or the app won't work:
+
+1. **System Settings → Privacy & Security → Accessibility** → Add your Terminal app
+2. **System Settings → Privacy & Security → Screen Recording** → Add your Terminal app
+
+## Model
+
+Place your `model.onnx` file in the `Aimmy.Mac` folder. You can also put `.onnx` models in a `models/` directory and select them from the in-app dropdown.
 
 ## How to Use
 
@@ -17,20 +36,28 @@ When you run the application, an overlay menu will open. You can configure optio
 - **Insert** or **Tab**: Toggle the configuration menu
 - **Cmd + Z**: Toggle Aim Assist
 - **Cmd + U**: Toggle Recording AI Vision
-- **Aim Key**: Configure your custom aim key inside the menu (default is often Left/Right Click or unassigned).
+- **Aim Key**: Configure your custom aim key inside the menu (default is Right Click)
 
 ## Configuration
 
-Configuration values are stored in `config.json` (and `config_p1` to `config_p5`). Ensure `model.onnx` is available in the expected path or place your custom `.onnx` models in a `models/` or `../models/` directory for the model selector to find them.
+Configuration values are stored in `config.json` (and profile variants like `config_p2.json`). All settings are editable from the in-app UI across four tabs: Aim, Detect, Trigger, and Config.
 
-## Calibration Options
+## Calibration
 
-Aimmy needs to properly align with your screen and game to work perfectly. Inside the menu, you will see a few calibration tools:
+Aimmy needs to properly align with your screen and game to work perfectly. Inside the Detect tab:
 
-1. **Auto Calibrate Sensitivity**: Calculates your game's mouse speed. When clicked, Aimmy will pause temporarily so you can follow the on-screen steps.
-2. **Calibrate Screen Center**: Clicking this creates a visual overlay to ensure your center offsets (where it aims) align perfectly with your screen's crosshair. Useful if you're not playing full screen.
-3. **Calibrate to Window (Smart)**: This option asks you to select your game from a list of open windows. It will then automatically calculate boundaries so the AI looks only at your specific game's content area (fixing issues where aim is shifted by titlebars).
-4. **Reset Offsets (Fix Aim)**: If your aim starts randomly snapping to the floor or sky, click this to reset any bad offset calculations.
+1. **Auto Calibrate Sensitivity**: Uses binary search to calculate your game's mouse speed automatically.
+2. **Calibrate Screen Center**: Opens a crosshair overlay — use arrow keys to align with your game's crosshair. Hold Shift for fine (1px) adjustments. Press Enter to save, Escape to cancel, R to reset.
+3. **Calibrate to Window**: Select your game window from a list to automatically set the correct center offsets.
+4. **Reset Offsets**: Resets all offset values to zero if aim gets misaligned.
+
+## Updating
+
+Use the **Check for Updates** button in the Config tab, or run:
+
+```bash
+cd aimmy/Aimmy.Mac && git pull && dotnet build
+```
 
 ## Excluded Files
 

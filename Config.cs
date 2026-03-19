@@ -65,7 +65,23 @@ namespace Aimmy.Mac
         // Prediction
         public bool PredictionEnabled { get; set; } = false;
         public float PredictionScale { get; set; } = 1.0f;
+        public bool PredictionUseAcceleration { get; set; } = false; // Track acceleration, not just velocity
+
+        // Target Stickiness (hysteresis to prevent flipping between targets)
+        public float TargetStickinessRadius { get; set; } = 30.0f; // Current target gets this pixel advantage
+
+        // Adaptive Smoothing (distance-based instead of flat)
+        public bool AdaptiveSmoothing { get; set; } = false;
+        public float AdaptiveSmoothNear { get; set; } = 0.7f;  // Smoothing when very close (high = slow/precise)
+        public float AdaptiveSmoothFar { get; set; } = 0.1f;   // Smoothing when far away (low = snappy)
+        public float AdaptiveSmoothRange { get; set; } = 150.0f; // Distance (px) over which to interpolate
         
+        // Flick Shot
+        public bool FlickEnabled { get; set; } = false;
+        public float FlickSpeedMultiplier { get; set; } = 3.0f;   // How fast the initial snap is
+        public float FlickThreshold { get; set; } = 80.0f;        // Min distance (px) to trigger a flick
+        public float FlickCorrectionSmooth { get; set; } = 0.7f;  // Smoothing after the flick (high = slow precise)
+
         // Humanization (Curve)
         public bool HumanizeAim { get; set; } = false;
         public float HumanizeStrength { get; set; } = 5.0f; // Magnitude of the sway
@@ -84,6 +100,14 @@ namespace Aimmy.Mac
         // Team Color
         public enum TeamColorType { None, Red, Blue, Purple, Yellow }
         public TeamColorType TeamColor { get; set; } = TeamColorType.None;
+
+        // Keybinds (macOS CGKeyCode, or 200+ for mouse, -1 for none)
+        // Modifier: 0 = none, 55 = Cmd, 56 = Shift, 58 = Option, 59 = Ctrl
+        public int KeyToggleMenu { get; set; } = 48; // Tab
+        public int KeyToggleAim { get; set; } = 6;   // Z (used with Cmd)
+        public int KeyToggleAimMod { get; set; } = 55; // Cmd
+        public int KeyToggleRecord { get; set; } = 32; // U (used with Cmd)
+        public int KeyToggleRecordMod { get; set; } = 55; // Cmd
 
         private static string ConfigPath = "config.json";
 
