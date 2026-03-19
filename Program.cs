@@ -214,6 +214,17 @@ namespace Aimmy.Mac
             Raylib.SetWindowPosition((int)bounds.Origin.X, (int)bounds.Origin.Y);
             Raylib.SetTargetFPS(_config.MaxFps);
 
+            // Phase 4: Auto-load resolution profile
+            if (_config.AutoResProfile)
+            {
+                string resProfile = AutoCalibrator.GetResolutionProfileName(width, height);
+                if (System.IO.File.Exists(resProfile))
+                {
+                    _config = AutoCalibrator.LoadOrCreateResolutionProfile(width, height);
+                    _currentProfileName = resProfile;
+                }
+            }
+
             _recoilTimer.Start();
             _triggerTimer.Start();
             _frameTimer.Start();
@@ -222,7 +233,9 @@ namespace Aimmy.Mac
 
             long lastLevelCheck = 0;
 
-            while (_running && !Raylib.WindowShouldClose())
+            Raylib.SetExitKey(0); // Disable ESC = quit
+
+            while (_running)
             {
                 _sw.Restart();
                 _frameTimer.Restart();
@@ -321,6 +334,25 @@ namespace Aimmy.Mac
                 if (_showMenu) _menuFade = 0f;
                 SetWindowClickthrough(!_showMenu);
                 Thread.Sleep(150);
+            }
+
+            // Cmd+ESC = quit
+            bool escPressed = Raylib.IsKeyPressed(KeyboardKey.Escape);
+            bool cmdHeld = NativeMethods.CGEventSourceKeyState(NativeMethods.kCGEventSourceStateHIDSystemState, 55);
+            if (escPressed && cmdHeld)
+            {
+                _running = false;
+                return;
+            }
+
+            // ESC alone cancels auto-calibration
+            if (escPressed &&
+                AutoCalibrator.State != AutoCalibrator.CalibState.Idle &&
+                AutoCalibrator.State != AutoCalibrator.CalibState.Done)
+            {
+                AutoCalibrator.CancelCalibration();
+                _showMenu = true;
+                SetWindowClickthrough(false);
             }
 
             if (CheckHotkey(_config.KeyToggleAim, _config.KeyToggleAimMod))
@@ -714,15 +746,49 @@ namespace Aimmy.Mac
                     _config.Save(_currentProfileName);
                 } y += 40;
 
-                DrawSectionHeader(startX, ref y, contentW, "Calibration");
+                DrawSectionHeader(startX, ref y, contentW, "Auto Calibration");
 
-                bool calibClick = DrawButton(startX, y, contentW, 32, _isCalibrating ? "Calibrating..." : "Auto Calibrate Sensitivity", mouseX, mouseY, clicked && interact); y += 40;
-                if (calibClick && !_isCalibrating) {
-                    _isCalibrating = true; _calibStep = 0;
-                    _calibSensLow = 0.001f; _calibSensHigh = 2.0f;
-                    _config.MouseSensitivity = (_calibSensLow + _calibSensHigh) / 2.0f;
-                    _showMenu = false; SetWindowClickthrough(true);
+                // Phase 2: Closed-loop sensitivity calibration
+                {
+                    string sensLabel = AutoCalibrator.State switch {
+                        AutoCalibrator.CalibState.Idle => "Auto Calibrate Sensitivity",
+                        AutoCalibrator.CalibState.Done => "Calibrated!",
+                        AutoCalibrator.CalibState.Failed => "Failed — Retry",
+                        _ => $"Calibrating... {AutoCalibrator.Progress}%"
+                    };
+                    bool sensActive = AutoCalibrator.State == AutoCalibrator.CalibState.Idle ||
+                                      AutoCalibrator.State == AutoCalibrator.CalibState.Done ||
+                                      AutoCalibrator.State == AutoCalibrator.CalibState.Failed;
+                    if (DrawButton(startX, y, contentW, 32, sensLabel, mouseX, mouseY, clicked && interact && sensActive)) {
+                        AutoCalibrator.StartSensitivityCalibration();
+                        _showMenu = false; SetWindowClickthrough(true);
+                    } y += 36;
+                    if (!string.IsNullOrEmpty(AutoCalibrator.StatusText) && AutoCalibrator.State != AutoCalibrator.CalibState.Idle) {
+                        Raylib.DrawText(AutoCalibrator.StatusText, startX, y, 11, UI_TEXT_MUTED);
+                        y += 16;
+                    }
                 }
+
+                // Phase 3: Auto-offset toggle
+                if (DrawToggle(startX, ref y, contentW, "Auto-Correct Offsets", _config.AutoOffsetEnabled, mouseX, mouseY, clicked && interact)) {
+                    _config.AutoOffsetEnabled = !_config.AutoOffsetEnabled;
+                    if (_config.AutoOffsetEnabled) AutoCalibrator.ResetAutoOffset();
+                    _config.Save(_currentProfileName);
+                }
+
+                // Window calibration
+                if (DrawButton(startX, y, contentW, 32, "Calibrate to Window", mouseX, mouseY, clicked && interact)) {
+                    _windowList = WindowHelper.GetWindows(); _isSelectingWindow = true; _windowListScrollY = 0;
+                } y += 38;
+
+                // Manual screen center
+                if (DrawButton(startX, y, contentW, 32, "Manual Center Calibration", mouseX, mouseY, clicked && interact)) {
+                    _calibSavedOffsetX = _config.CenterOffsetX; _calibSavedOffsetY = _config.CenterOffsetY;
+                    _calibHoldTime = 0;
+                    _isCalibratingCenter = true; _showMenu = false; SetWindowClickthrough(true);
+                } y += 38;
+
+                DrawSectionHeader(startX, ref y, contentW, "Manual Offsets");
 
                 float ox = _config.XOffset;
                 DrawSlider(startX, y, contentW, 20, "Offset X", ref ox, -500, 500, mouseX, mouseY, isDown && interact); y += gap;
@@ -731,18 +797,23 @@ namespace Aimmy.Mac
                 DrawSlider(startX, y, contentW, 20, "Offset Y", ref oy, -500, 500, mouseX, mouseY, isDown && interact); y += gap;
                 _config.YOffset = (int)oy;
 
-                if (DrawButton(startX, y, contentW, 32, "Calibrate Screen Center", mouseX, mouseY, clicked && interact)) {
-                    _calibSavedOffsetX = _config.CenterOffsetX; _calibSavedOffsetY = _config.CenterOffsetY;
-                    _calibHoldTime = 0;
-                    _isCalibratingCenter = true; _showMenu = false; SetWindowClickthrough(true);
-                } y += 40;
-                if (DrawButton(startX, y, contentW, 32, "Calibrate to Window", mouseX, mouseY, clicked && interact)) {
-                    _windowList = WindowHelper.GetWindows(); _isSelectingWindow = true; _windowListScrollY = 0;
-                } y += 40;
                 if (DrawButton(startX, y, contentW, 32, "Reset Offsets", mouseX, mouseY, clicked && interact)) {
                     _config.XOffset = 0; _config.YOffset = 0; _config.CenterOffsetX = 0; _config.CenterOffsetY = 0;
+                    AutoCalibrator.ResetAutoOffset();
                     _config.Save(_currentProfileName);
                 } y += 40;
+
+                DrawSectionHeader(startX, ref y, contentW, "Debug");
+
+                // Phase 5: Debug overlay toggle
+                if (DrawToggle(startX, ref y, contentW, "Debug Overlay", _config.DebugOverlay, mouseX, mouseY, clicked && interact)) {
+                    _config.DebugOverlay = !_config.DebugOverlay; _config.Save(_currentProfileName);
+                }
+
+                // Phase 4: Resolution profiles
+                if (DrawToggle(startX, ref y, contentW, "Auto Resolution Profile", _config.AutoResProfile, mouseX, mouseY, clicked && interact)) {
+                    _config.AutoResProfile = !_config.AutoResProfile; _config.Save(_currentProfileName);
+                }
             }
             // ==================== TAB 2: TRIGGER ====================
             else if (_activeTab == 2)
@@ -879,7 +950,7 @@ namespace Aimmy.Mac
 
                 y += 8;
                 string recLabel = Recorder.IsRecording ? "STOP RECORDING" : (Recorder.IsProcessing ? "Processing..." : "Record AI Vision");
-                if (DrawButton(startX, y, contentW, 32, recLabel, mouseX, mouseY, clicked && interact && !Recorder.IsProcessing)) {
+                if (DrawButton(startX, y, contentW, 32, recLabel, mouseX, mouseY, clicked && !Recorder.IsProcessing)) {
                     if (Recorder.IsRecording) Recorder.Stop(); else Recorder.Start();
                 }
                 if (Recorder.IsRecording) {
@@ -1046,12 +1117,10 @@ namespace Aimmy.Mac
 
                 if (hover && Raylib.IsMouseButtonPressed(MouseButton.Left))
                 {
-                    int screenCenterX = screenW / 2;
-                    int screenCenterY = screenH / 2;
-                    int winCenterX = (int)(w.Bounds.Origin.X + (w.Bounds.Size.Width / 2));
-                    int winCenterY = (int)(w.Bounds.Origin.Y + (w.Bounds.Size.Height / 2));
-                    _config.CenterOffsetX = winCenterX - screenCenterX;
-                    _config.CenterOffsetY = winCenterY - screenCenterY;
+                    // Phase 1: Content-aware window calibration (accounts for title bar)
+                    var (offX, offY) = AutoCalibrator.CalcWindowContentCenter(w, screenW, screenH);
+                    _config.CenterOffsetX = offX;
+                    _config.CenterOffsetY = offY;
                     _config.Save(_currentProfileName);
                     _isSelectingWindow = false;
                 }
@@ -1215,10 +1284,18 @@ namespace Aimmy.Mac
                 }
             }
 
+            // Phase 5: Debug overlay (draws even when aim off)
+            AutoCalibrator.ShowDebugOverlay = _config.DebugOverlay;
+            AutoCalibrator.DrawDebugOverlay(screenW, screenH);
+
             if (!_aimAssistActive) return;
 
             int centerX = (screenW / 2) + _config.CenterOffsetX;
             int centerY = (screenH / 2) + _config.CenterOffsetY;
+
+            // Phase 5: Feed debug data
+            AutoCalibrator.DbgCenterX = centerX;
+            AutoCalibrator.DbgCenterY = centerY;
 
             Color fovColor = new Color(_config.FovColorR, _config.FovColorG, _config.FovColorB, _config.FovColorA);
             Raylib.DrawCircleLines(centerX, centerY, _config.FovSize / 2.0f, fovColor);
@@ -1244,6 +1321,11 @@ namespace Aimmy.Mac
             if (capY + capSizePoints > pointsH) capY = pointsH - capSizePoints;
             if (capX < 0) capX = 0;
             if (capY < 0) capY = 0;
+
+            // Phase 5: Feed capture region to debug
+            AutoCalibrator.DbgCapX = capX;
+            AutoCalibrator.DbgCapY = capY;
+            AutoCalibrator.DbgCapSize = capSizePoints;
 
             _perfTimer.Restart();
             var result = MacCapture.CaptureAndFillTensor(buffer, imgSize, new CGRect(capX, capY, capSizePoints, capSizePoints), _selectedDisplayID);
@@ -1326,6 +1408,35 @@ namespace Aimmy.Mac
 
                 double dx = targetX - centerX;
                 double dy = targetY - centerY;
+
+                // Phase 5: Feed target/error to debug
+                AutoCalibrator.DbgTargetX = targetX;
+                AutoCalibrator.DbgTargetY = targetY;
+                AutoCalibrator.DbgErrorX = dx;
+                AutoCalibrator.DbgErrorY = dy;
+
+                double distForAutoOffset = Math.Sqrt(dx * dx + dy * dy);
+
+                // Phase 2: Closed-loop sensitivity calibration
+                if (AutoCalibrator.State != AutoCalibrator.CalibState.Idle &&
+                    AutoCalibrator.State != AutoCalibrator.CalibState.Done &&
+                    AutoCalibrator.State != AutoCalibrator.CalibState.Failed)
+                {
+                    bool done = AutoCalibrator.UpdateSensitivityCalibration(
+                        _config, best, scale, capX, capY, centerX, centerY);
+                    if (done || AutoCalibrator.State == AutoCalibrator.CalibState.Done ||
+                        AutoCalibrator.State == AutoCalibrator.CalibState.Failed)
+                    {
+                        _config.Save(_currentProfileName);
+                        _showMenu = true;
+                        SetWindowClickthrough(false);
+                    }
+                    return; // Don't move mouse during calibration
+                }
+
+                // Phase 3: Auto-offset correction
+                AutoCalibrator.AutoOffsetEnabled = _config.AutoOffsetEnabled;
+                AutoCalibrator.UpdateAutoOffset(_config, dx, dy, distForAutoOffset);
 
                 double predX = 0;
                 double predY = 0;

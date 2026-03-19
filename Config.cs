@@ -101,6 +101,11 @@ namespace Aimmy.Mac
         public enum TeamColorType { None, Red, Blue, Purple, Yellow }
         public TeamColorType TeamColor { get; set; } = TeamColorType.None;
 
+        // Auto-Calibration
+        public bool AutoOffsetEnabled { get; set; } = false;
+        public bool DebugOverlay { get; set; } = false;
+        public bool AutoResProfile { get; set; } = true;
+
         // Keybinds (macOS CGKeyCode, or 200+ for mouse, -1 for none)
         // Modifier: 0 = none, 55 = Cmd, 56 = Shift, 58 = Option, 59 = Ctrl
         public int KeyToggleMenu { get; set; } = 48; // Tab
